@@ -16,6 +16,7 @@ provider:
   region: us-east-1
   environment:
     REGISTER_TABLE: ${param:tableName}
+    TOPIC_ARN: !Ref Topic
   iam:
     role:
       statements:
@@ -27,8 +28,13 @@ provider:
             - Fn::GetAtt:
               - RegisterTable
               - Arn
+        - Effect: Allow
+          Action:
+            - sns:Publish
+          Resource: !Ref Topic
   memorySize: 512
   timeout: 15
+  
 plugins:
   - serverless-plugin-typescript 
   
@@ -44,7 +50,22 @@ functions:
       - httpApi:
           path: /register
           method: post
-
+  Appointment_PE_Consumer:
+    handler: services/appointment_pe.handler
+    events:
+      - sqs:
+          arn:
+          Fn::GetAtt:
+            - MyQueueOne
+            - Arn
+  Appointment_CL_Consumer:
+    handler: services/appointment_cl.handler
+    events:
+      - sqs:
+          arn:
+          Fn::GetAtt:
+            - MyQueueTwo
+            - Arn          
 
 
 resources:
@@ -60,7 +81,60 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
+            
     Topic:
       Type: AWS::SNS::Topic
       Properties:
         topicName: my-topic
+    
+    MyQueueOne:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: my-queue-one
+    MyQueueTwo:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: my-queue-two
+
+    MySubcriptionOne:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref MyTopic
+        Protocol: sqs
+        Endpoint: !GetAtt MyQueueOne.Arn
+    MySubcriptionTwo:
+      Type: AWS::SNS::Subscription
+      Properties:
+        TopicArn: !Ref MyTopic
+        Protocol: sqs
+        Endpoint: !GetAtt MyQueueTwo.Arn
+    
+    QueueOnePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref MyQueueOne
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "sqs:SendMessage"
+              Resource: !GetAtt MyQueueOne.Arn
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: !Ref MyTopic
+
+    QueueTwoPolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref MyQueueTwo
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal: "*"
+              Action: "sqs:SendMessage"
+              Resource: !GetAtt MyQueueTwo.Arn
+              Condition:
+                ArnEquals:
+                  aws:SourceArn: !Ref MyTopic

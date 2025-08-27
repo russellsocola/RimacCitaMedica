@@ -4,7 +4,9 @@ import { PutCommand } from "@aws-sdk/lib-dynamodb";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns"
 
 const client = new DynamoDBClient();
+const clientSns = new SNSClient();
 const TABLE = process.env.REGISTER_TABLE || "";
+const TOPIC_ARN = process.env.TOPIC_ARN || "";
 
 export const handler: APIGatewayProxyHandler = async (event) => {
     try {
@@ -15,16 +17,18 @@ export const handler: APIGatewayProxyHandler = async (event) => {
         const body = JSON.parse(event.body);
         const { insuredId, scheduleId, countryISO } = body;
         if (!insuredId || !scheduleId || !countryISO) {
-            if (!/^\d{5}$/.test(body.insuredId)) {
-                return { statusCode: 400, body: JSON.stringify({ message: "insuredId debe ser 5 dígitos" }) };
-            }
-            if (typeof body.scheduleId !== "number") {
-                return { statusCode: 400, body: JSON.stringify({ message: "scheduleId debe ser número" }) };
-            }
-            if (!["PE", "CL"].includes(body.countryISO)) {
-                return { statusCode: 400, body: JSON.stringify({ message: "countryISO inválido (PE o CL)" }) };
-            }
+            return { statusCode: 400, body: JSON.stringify({ message: "Faltan campos requeridos" }) };
         }
+        if (!/^\d{5}$/.test(body.insuredId)) {
+            return { statusCode: 400, body: JSON.stringify({ message: "insuredId debe ser 5 dígitos" }) };
+        }
+        if (typeof body.scheduleId !== "number") {
+            return { statusCode: 400, body: JSON.stringify({ message: "scheduleId debe ser número" }) };
+        }
+        if (!["PE", "CL"].includes(body.countryISO)) {
+            return { statusCode: 400, body: JSON.stringify({ message: "countryISO inválido (PE o CL)" }) };
+        }
+
 
         const newItem = {
             id: insuredId,
@@ -38,6 +42,7 @@ export const handler: APIGatewayProxyHandler = async (event) => {
             Item: newItem
         }
         await client.send(new PutCommand(params))
+        await clientSns.send(new PublishCommand({ TopicArn: TOPIC_ARN, Message: JSON.stringify(newItem) }))
 
         return {
             statusCode: 200,
