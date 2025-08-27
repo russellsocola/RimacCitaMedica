@@ -1,0 +1,66 @@
+# "org" ensures this Service is used with the correct Serverless Framework Access Key.
+org: rsocola
+# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
+app: citamedica
+# "service" is the name of this project. This will also be added to your AWS resource names.
+service: RimacReto
+
+stages:
+  default:
+    params:
+      tableName: "register-table-${sls:stage}"
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: us-east-1
+  environment:
+    REGISTER_TABLE: ${param:tableName}
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+          Resource:
+            - Fn::GetAtt:
+              - RegisterTable
+              - Arn
+  memorySize: 512
+  timeout: 15
+plugins:
+  - serverless-plugin-typescript 
+  
+
+functions:
+  Appointment:
+    handler: services/appointment.handler
+    events:
+      - sns:
+          arn:
+            Ref: Topic
+          topicName: my-topic
+      - httpApi:
+          path: /register
+          method: post
+
+
+
+resources:
+  Resources:
+    RegisterTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${param:tableName}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+    Topic:
+      Type: AWS::SNS::Topic
+      Properties:
+        topicName: my-topic
