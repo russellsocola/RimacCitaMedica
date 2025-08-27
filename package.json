@@ -10,6 +10,7 @@
     "@aws-sdk/client-dynamodb": "^3.876.0",
     "@aws-sdk/client-sns": "^3.876.0",
     "@aws-sdk/client-sqs": "^3.876.0",
-    "@aws-sdk/lib-dynamodb": "^3.876.0"
+    "@aws-sdk/lib-dynamodb": "^3.876.0",
+    "mysql2": "^3.14.3"
   }
 }

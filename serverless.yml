@@ -17,6 +17,7 @@ provider:
   environment:
     REGISTER_TABLE: ${param:tableName}
     TOPIC_ARN: !Ref Topic
+    EVENT_BUS: !Ref MyEventBus
   iam:
     role:
       statements:
@@ -50,6 +51,14 @@ functions:
       - httpApi:
           path: /register
           method: post
+      - eventBridge:
+          eventBus: my-custom-bus
+          pattern:
+            source:
+              - app.citamedica
+            detail-type:
+              - AppointmentCreated
+
   Appointment_PE_Consumer:
     handler: services/appointment_pe.handler
     events:
@@ -58,6 +67,7 @@ functions:
           Fn::GetAtt:
             - MyQueueOne
             - Arn
+            
   Appointment_CL_Consumer:
     handler: services/appointment_cl.handler
     events:
@@ -138,3 +148,8 @@ resources:
               Condition:
                 ArnEquals:
                   aws:SourceArn: !Ref MyTopic
+
+    MyEventBus:
+      Type: AWS::Events::EventBus
+      Properties:
+        Name: my-custom-bus
