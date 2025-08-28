@@ -1,4 +1,4 @@
-import { APIGatewayProxyEvent, SQSEvent } from "aws-lambda";
+import { APIGatewayProxyEvent,APIGatewayProxyResult, SQSEvent } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns"
@@ -8,13 +8,18 @@ const clientSns = new SNSClient();
 const TABLE = process.env.REGISTER_TABLE || "";
 const TOPIC_ARN = process.env.TOPIC_ARN || "";
 
-export const handler = async (event: SQSEvent | APIGatewayProxyEvent) => {
+export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<APIGatewayProxyResult | void> => {
     if ("Records" in event) {
         // Viene de SQS
         for (const record of event?.Records) {
-            console.log("📩 Mensaje SQS:", JSON.parse(record.body));
-            const { insuredId } = JSON.parse(record.body);
+            console.log("Mensaje SQS:", JSON.parse(record.body));
+            const { insuredId,state, } = JSON.parse(JSON.parse(record.body).Message);
 
+            if (!["pending", "completed"].includes(state)) {
+            console.warn(`Estado inválido: ${state}`);
+            continue;
+            }
+            //const newStatus = state;
             const getResult = await client.send(new GetCommand({
                 TableName: TABLE,
                 Key: { id: insuredId },
@@ -37,7 +42,7 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent) => {
                             "#st": "status",
                         },
                         ExpressionAttributeValues: {
-                            ":newStatus": "Completed",
+                            ":newStatus": state,
                             ":now": new Date().toISOString(),
                         },
                         ReturnValues: "ALL_NEW",
@@ -47,11 +52,11 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent) => {
                 console.log(result.Attributes)
 
                 return {
-                    statuscode: 200,
+                    statusCode: 200,
                     body: JSON.stringify({ Message: result })
                 }
             } catch (error) {
-                console.error("❌ Error actualizando item:", error);
+                console.error("Error actualizando item:", error);
                 throw error;
             }
         }
@@ -76,11 +81,11 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent) => {
                 return { statusCode: 400, body: JSON.stringify({ message: "countryISO inválido (PE o CL)" }) };
             }
 
-
             const newItem = {
                 id: insuredId,
                 scheduleId: scheduleId,
                 countryISO: countryISO,
+                status: "pending",
                 createAt: new Date().toISOString(),
                 modifyAt: null
             }

@@ -17,7 +17,7 @@ provider:
   environment:
     REGISTER_TABLE: ${param:tableName}
     TOPIC_ARN: !Ref Topic
-    EVENT_BUS: !Ref MyEventBus
+    EVENT_BUS: !GetAtt MyEventBus.Arn
   iam:
     role:
       statements:
@@ -25,6 +25,8 @@ provider:
           Action:
             - dynamodb:PutItem
             - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:Scan
           Resource:
             - Fn::GetAtt:
               - RegisterTable
@@ -33,53 +35,72 @@ provider:
           Action:
             - sns:Publish
           Resource: !Ref Topic
+        - Effect: Allow
+          Action:
+            - events:PutEvents
+          Resource: !GetAtt MyEventBus.Arn
   memorySize: 512
-  timeout: 15
+  timeout: 20
   
 plugins:
   - serverless-plugin-typescript 
   
 
 functions:
+#Lambda principal
   Appointment:
     handler: services/appointment.handler
+    environment:
+      LOG_LEVEL: INFO
     events:
-      - sns:
-          arn:
-            Ref: Topic
-          topicName: my-topic
       - httpApi:
           path: /register
           method: post
-      - eventBridge:
-          eventBus: my-custom-bus
-          pattern:
-            source:
-              - app.citamedica
-            detail-type:
-              - AppointmentCreated
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - MyQueueThree
+              - Arn
+            
 
+#Lamda de Listado
+  AppointmentGet:
+    handler: services/appointment_get.handler
+    environment:
+      LOG_LEVEL: INFO
+    events:
+      - httpApi:
+          path: /list
+          method: get    
+
+#Lamnda de carga Mysql PE
   Appointment_PE_Consumer:
     handler: services/appointment_pe.handler
+    environment:
+      LOG_LEVEL: INFO
     events:
       - sqs:
           arn:
-          Fn::GetAtt:
-            - MyQueueOne
-            - Arn
-            
+            Fn::GetAtt:
+              - MyQueueOne
+              - Arn
+
+#Lamnda de carga Mysql   CL         
   Appointment_CL_Consumer:
     handler: services/appointment_cl.handler
+    environment:
+      LOG_LEVEL: INFO
     events:
       - sqs:
           arn:
-          Fn::GetAtt:
-            - MyQueueTwo
-            - Arn          
+            Fn::GetAtt:
+              - MyQueueTwo
+              - Arn          
 
 
 resources:
   Resources:
+  #Tabla DynamoDb
     RegisterTable:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -91,34 +112,52 @@ resources:
         KeySchema:
           - AttributeName: id
             KeyType: HASH
-            
+
+  #Topic SNS para FANOUT        
     Topic:
       Type: AWS::SNS::Topic
       Properties:
-        topicName: my-topic
+        TopicName: my-topic
     
+  #Cola uno 
     MyQueueOne:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: my-queue-one
+        QueueName: my-queue-one-${sls:stage}
+  
+  #Cola dos  
     MyQueueTwo:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: my-queue-two
+        QueueName: my-queue-two-${sls:stage}
 
+  #Cola tres  
+    MyQueueThree:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: my-queue-three-${sls:stage}
+
+  #Suscripcion de la cola Uno a SNS
     MySubcriptionOne:
       Type: AWS::SNS::Subscription
       Properties:
-        TopicArn: !Ref MyTopic
+        TopicArn: !Ref Topic
         Protocol: sqs
         Endpoint: !GetAtt MyQueueOne.Arn
+        FilterPolicy:
+          country: ["PE"]
+  
+  #Suscripcion de la cola Dos a SNS
     MySubcriptionTwo:
       Type: AWS::SNS::Subscription
       Properties:
-        TopicArn: !Ref MyTopic
+        TopicArn: !Ref Topic
         Protocol: sqs
         Endpoint: !GetAtt MyQueueTwo.Arn
-    
+        FilterPolicy:
+          country: ["CL"]
+  
+  #Politica de la Cola Uno
     QueueOnePolicy:
       Type: AWS::SQS::QueuePolicy
       Properties:
@@ -127,13 +166,15 @@ resources:
         PolicyDocument:
           Statement:
             - Effect: Allow
-              Principal: "*"
+              Principal: 
+                Service: sns.amazonaws.com
               Action: "sqs:SendMessage"
               Resource: !GetAtt MyQueueOne.Arn
               Condition:
                 ArnEquals:
-                  aws:SourceArn: !Ref MyTopic
-
+                  aws:SourceArn: !Ref Topic
+  
+  #Politica de la Cola dos
     QueueTwoPolicy:
       Type: AWS::SQS::QueuePolicy
       Properties:
@@ -142,14 +183,44 @@ resources:
         PolicyDocument:
           Statement:
             - Effect: Allow
-              Principal: "*"
+              Principal: 
+                Service: sns.amazonaws.com
               Action: "sqs:SendMessage"
               Resource: !GetAtt MyQueueTwo.Arn
               Condition:
                 ArnEquals:
-                  aws:SourceArn: !Ref MyTopic
+                  aws:SourceArn: !Ref Topic
 
+  #Event Bridge
     MyEventBus:
       Type: AWS::Events::EventBus
       Properties:
         Name: my-custom-bus
+
+  #Regla de Event Bridge para envio a la nueva cola
+    MyEventBridgeRule:
+      Type: AWS::Events::Rule
+      Properties:
+        EventBusName: !Ref MyEventBus
+        EventPattern:
+          source:
+            - app.citamedica
+          detail-type:
+            - AppointmentProccess
+        Targets:
+          - Arn: !GetAtt MyQueueThree.Arn
+            Id: TargetQueueEventBridge
+    
+    #Politica de Event Bridge para envio de mensajes a la nueva cola
+    QueueEventBridgePolicy:
+      Type: AWS::SQS::QueuePolicy
+      Properties:
+        Queues:
+          - !Ref MyQueueThree
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Principal: 
+                Service: events.amazonaws.com
+              Action: "sqs:SendMessage"
+              Resource: !GetAtt MyQueueThree.Arn

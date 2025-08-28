@@ -9,7 +9,7 @@ const DB_USER = process.env.DB_USER || "";
 const DB_PASSWORD = process.env.DB_PASSWORD || "";
 const DB_NAME = process.env.DB_NAME || "";
 
-export const handler = async(event: SQSEvent) => {
+export const handler = async (event: SQSEvent) => {
     let connection;
 
     try {
@@ -24,10 +24,17 @@ export const handler = async(event: SQSEvent) => {
         for (const record of event.Records) {
             const body = JSON.parse(record.body);
 
-            console.log("📩 Mensaje recibido de SQS:", body);
+            console.log("Mensaje recibido de SQS:", body);
 
             const { insuredId, scheduleId, countryISO } = body;
 
+            if (countryISO !== "PE") {
+                console.log("Esta consulta no se registrara en este pais:")
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({ message: "Este no es el destino objetivo" })
+                };
+            }
             await connection.execute(
                 "INSERT INTO appointments_pe (insured_id, schedule_id, country_iso, created_at) VALUES (?, ?, ?, NOW())",
                 [insuredId, scheduleId, countryISO]
@@ -38,7 +45,12 @@ export const handler = async(event: SQSEvent) => {
                     {
                         Source: "app.citamedica",
                         DetailType: "AppointmentCreated",
-                        Detail: JSON.stringify(body),
+                        Detail: JSON.stringify({
+                            insuredId,
+                            scheduleId,
+                            countryISO,
+                            state: "completed"
+                        }),
                         EventBusName: process.env.EVENT_BUS || "default",
                     },
                 ],
@@ -47,16 +59,21 @@ export const handler = async(event: SQSEvent) => {
             const response = await client.send(command);
 
             console.log("Evento publicado:", response);
-            return {
-                statusCode: 200,
-                body: JSON.stringify({ message: "Evento publicado en EventBridge" }),
-            };
         }
+        return {
+            statusCode: 200,
+            body: JSON.stringify({ message: "Evento publicado en EventBridge" }),
+        };
     } catch (error) {
         console.error("Error:", error)
         return {
             statusCode: 500,
             body: JSON.stringify({ message: "Internal server Error" })
         };
+    } finally {
+        if (connection) {
+            await connection.end();
+        }
     }
+
 }
