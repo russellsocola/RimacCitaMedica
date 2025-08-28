@@ -1,8 +1,9 @@
 import { APIGatewayProxyEvent } from "aws-lambda";
-import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
 const TABLE = process.env.REGISTER_TABLE || "";
-const client = new DynamoDBClient();
+const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 export const handler = async (event: APIGatewayProxyEvent) => {
 
@@ -15,6 +16,7 @@ export const handler = async (event: APIGatewayProxyEvent) => {
         } catch (err) {
             return {
                 statusCode: 400,
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message: "lastKey inválido" }),
             };
         }
@@ -31,6 +33,7 @@ export const handler = async (event: APIGatewayProxyEvent) => {
 
         return {
             statusCode: 200,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 items: data.Items,
                 lastEvaluatedKey: data.LastEvaluatedKey ? 
@@ -42,6 +45,7 @@ export const handler = async (event: APIGatewayProxyEvent) => {
         console.log("Error: ", error);
         return {
             statusCode: 500,
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ message: "Error al obtener datos con Paginacion", error: error.message })
         };
 

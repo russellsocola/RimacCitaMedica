@@ -1,69 +1,109 @@
-<!--
-title: 'AWS Simple HTTP Endpoint example in NodeJS'
-description: 'This template demonstrates how to make a simple HTTP API with Node.js running on AWS Lambda and API Gateway using the Serverless Framework.'
-layout: Doc
-framework: v4
-platform: AWS
-language: nodeJS
-authorLink: 'https://github.com/serverless'
-authorName: 'Serverless, Inc.'
-authorAvatar: 'https://avatars1.githubusercontent.com/u/13742415?s=200&v=4'
--->
+# 🏥 CitaMedica API  
+**Sistema serverless para gestión de citas médicas con arquitectura *event-driven* en AWS.**
 
-# Serverless Framework Node HTTP API on AWS
+---
 
-This template demonstrates how to make a simple HTTP API with Node.js running on AWS Lambda and API Gateway using the Serverless Framework.
+## 🏗️ Arquitectura  
 
-This template does not include any kind of persistence (database). For more advanced examples, check out the [serverless/examples repository](https://github.com/serverless/examples/) which includes Typescript, Mongo, DynamoDB and other examples.
+```text
+API Gateway → Lambda → DynamoDB
+                ↓
+            SNS Fan-out
+          ↙           ↘
+    SQS PE          SQS CL
+      ↓               ↓  
+  MySQL PE      MySQL CL
+      ↓               ↓
+    EventBridge Processing
+🚀 Stack
+Runtime: Node.js 20.x + TypeScript
 
-## Usage
+Framework: Serverless Framework
 
-### Deployment
+Bases de datos: DynamoDB + MySQL
 
-In order to deploy the example, you need to run the following command:
+Mensajería: SNS, SQS, EventBridge
 
-```
-serverless deploy
-```
+Cloud: AWS
 
-After running deploy, you should see output similar to:
+📋 API Endpoints
+Crear Cita
+http
+Copiar código
+POST /register
+Content-Type: application/json
 
-```
-Deploying "serverless-http-api" to stage "dev" (us-east-1)
+{
+  "insuredId": "12345",
+  "scheduleId": 101,
+  "countryISO": "PE"
+}
+Listar Citas (con paginación)
+http
+Copiar código
+GET /list?status=pending&countryISO=PE&limit=10
+🔧 Setup Rápido
+bash
+Copiar código
+# Instalar dependencias
+npm install
 
-✔ Service deployed to stack serverless-http-api-dev (91s)
+# Desplegar
+sls deploy --stage dev
+🌍 Variables de Entorno
+bash
+Copiar código
+DB_HOST=your-mysql-host
+DB_USER=your-username  
+DB_PASSWORD=your-password
+DB_NAME=appointments
+EVENT_BUS=default
+REGISTER_TABLE=AppointmentsTable
+🔄 Flujo de Procesamiento
+POST /register → Guarda en DynamoDB
 
-endpoint: GET - https://xxxxxxxxxx.execute-api.us-east-1.amazonaws.com/
-functions:
-  hello: serverless-http-api-dev-hello (1.6 kB)
-```
+SNS Fan-out → Distribuye por país (PE / CL)
 
-_Note_: In current form, after deployment, your API is public and can be invoked by anyone. For production deployments, you might want to configure an authorizer. For details on how to do that, refer to [HTTP API (API Gateway V2) event docs](https://www.serverless.com/framework/docs/providers/aws/events/http-api).
+SQS Consumers → Procesan e insertan en MySQL
 
-### Invocation
+EventBridge → Publica estado actualizado
 
-After successful deployment, you can call the created application via HTTP:
+GET /list → Consulta DynamoDB con paginación
 
-```
-curl https://xxxxxxx.execute-api.us-east-1.amazonaws.com/
-```
+📊 Estructura de Datos
+DynamoDB
+ts
+Copiar código
+{
+  id: string;           // insuredId (PK)
+  scheduleId: number;
+  countryISO: "PE" | "CL";
+  status: "pending" | "completed";
+  createAt: string;
+  modifyAt: string;
+}
+🔐 Características
+✅ Event-Driven Architecture con SNS + SQS
 
-Which should result in response similar to:
+✅ Multi-país con filtros SNS
 
-```json
-{ "message": "Go Serverless v4! Your function executed successfully!" }
-```
+✅ Paginación automática en DynamoDB
 
-### Local development
+✅ Validaciones estrictas
 
-The easiest way to develop and test your function is to use the `dev` command:
+✅ End-to-end TypeScript
 
-```
-serverless dev
-```
+✅ Principio de menor privilegio (IAM)
 
-This will start a local emulator of AWS Lambda and tunnel your requests to and from AWS Lambda, allowing you to interact with your function as if it were running in the cloud.
+📚 Scripts
+bash
+Copiar código
+npm run build   # Compilar TypeScript
+npm run deploy  # Desplegar a AWS
+npm test        # Ejecutar tests
+🚨 Monitoreo
+CloudWatch Logs → Debugging
 
-Now you can invoke the function as before, but this time the function will be executed locally. Now you can develop your function locally, invoke it, and see the results immediately without having to re-deploy.
+DynamoDB Metrics → Performance
 
-When you are done developing, don't forget to run `serverless deploy` to deploy the function to the cloud.
+SQS Dead Letter Queues → Resiliencia en producción

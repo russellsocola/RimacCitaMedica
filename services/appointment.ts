@@ -1,4 +1,4 @@
-import { APIGatewayProxyEvent,APIGatewayProxyResult, SQSEvent } from "aws-lambda";
+import { APIGatewayProxyEvent, APIGatewayProxyResult, SQSEvent } from "aws-lambda";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { PutCommand, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { SNSClient, PublishCommand } from "@aws-sdk/client-sns"
@@ -13,11 +13,16 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
         // Viene de SQS
         for (const record of event?.Records) {
             console.log("Mensaje SQS:", JSON.parse(record.body));
-            const { insuredId,state, } = JSON.parse(JSON.parse(record.body).Message);
+
+            // Parsear el mensaje SNS dentro del SQS
+            const snsMessage = JSON.parse(record.body);
+            const appointmentData = JSON.parse(snsMessage.Message);
+
+            const { insuredId, state, } = appointmentData;
 
             if (!["pending", "completed"].includes(state)) {
-            console.warn(`Estado inválido: ${state}`);
-            continue;
+                console.warn(`Estado inválido: ${state}`);
+                continue;
             }
             //const newStatus = state;
             const getResult = await client.send(new GetCommand({
@@ -26,10 +31,8 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
             }));
 
             if (!getResult.Item) {
-                return {
-                    statusCode: 404,
-                    body: JSON.stringify({ message: "Id no encontrado" }),
-                }
+                console.error(`Id no encontrado: ${insuredId}`);
+                continue;
             }
 
             try {
@@ -94,7 +97,16 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
                 Item: newItem
             }
             await client.send(new PutCommand(params))
-            await clientSns.send(new PublishCommand({ TopicArn: TOPIC_ARN, Message: JSON.stringify(newItem) }))
+            await clientSns.send(new PublishCommand({
+                TopicArn: TOPIC_ARN,
+                Message: JSON.stringify(newItem),
+                MessageAttributes: {
+                    country: {
+                        DataType: 'String',
+                        StringValue: countryISO
+                    }
+                }
+            }))
 
             return {
                 statusCode: 200,
