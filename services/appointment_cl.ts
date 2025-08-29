@@ -39,13 +39,17 @@ export const handler = async (event: SQSEvent) => {
                 continue;
             }
 
-            try {
-                await connection.execute(
-                    "INSERT INTO appointments_cls (insured_id, schedule_id, country_iso, created_at) VALUES (?, ?, ?, NOW())",
-                    [insuredId, scheduleId, countryISO]
-                );
-            } catch (err) {
-                continue;
+            if (connection) {
+                try {
+                    await connection.execute(
+                        "INSERT INTO appointments_cls (insured_id, schedule_id, country_iso, created_at) VALUES (?, ?, ?, NOW())",
+                        [insuredId, scheduleId, countryISO]
+                    );
+                } catch (err) {
+                    continue;
+                }
+            } else {
+                console.warn("Sin conexión DB, saltando inserción");
             }
 
 
@@ -53,14 +57,14 @@ export const handler = async (event: SQSEvent) => {
                 Entries: [
                     {
                         Source: "app.citamedica",
-                        DetailType: "AppointmentCreated",
+                        DetailType: "AppointmentProccess",
                         Detail: JSON.stringify({
                             insuredId,
                             scheduleId,
                             countryISO,
                             state: "completed",
                             processedAt: new Date().toISOString(),
-                            processor: "PE_Consumer"
+                            processor: "CL_Consumer"
                         }),
                         EventBusName: process.env.EVENT_BUS || "default",
                     },

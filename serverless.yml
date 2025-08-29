@@ -108,10 +108,10 @@ resources:
         TableName: ${param:tableName}
         BillingMode: PAY_PER_REQUEST
         AttributeDefinitions:
-          - AttributeName: id
+          - AttributeName: insuredId
             AttributeType: S
         KeySchema:
-          - AttributeName: id
+          - AttributeName: insuredId
             KeyType: HASH
 
   #Topic SNS para FANOUT        

@@ -15,10 +15,8 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
             console.log("Mensaje SQS:", JSON.parse(record.body));
 
             // Parsear el mensaje SNS dentro del SQS
-            const snsMessage = JSON.parse(record.body);
-            const appointmentData = JSON.parse(snsMessage.Message);
-
-            const { insuredId, state, } = appointmentData;
+            const sqsMessage = JSON.parse(record.body);
+            const {  insuredId, scheduleId, countryISO, state, processedAt, processor } = sqsMessage.detail;
 
             if (!["pending", "completed"].includes(state)) {
                 console.warn(`Estado inválido: ${state}`);
@@ -27,7 +25,7 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
             //const newStatus = state;
             const getResult = await client.send(new GetCommand({
                 TableName: TABLE,
-                Key: { id: insuredId },
+                Key: { insuredId: insuredId },
             }));
 
             if (!getResult.Item) {
@@ -39,7 +37,7 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
                 const result = await client.send(
                     new UpdateCommand({
                         TableName: TABLE,
-                        Key: { id: insuredId },
+                        Key: { insuredId: insuredId },
                         UpdateExpression: "SET #st = :newStatus, modifyAt = :now",
                         ExpressionAttributeNames: {
                             "#st": "status",
@@ -85,7 +83,7 @@ export const handler = async (event: SQSEvent | APIGatewayProxyEvent): Promise<A
             }
 
             const newItem = {
-                id: insuredId,
+                insuredId: insuredId,
                 scheduleId: scheduleId,
                 countryISO: countryISO,
                 status: "pending",

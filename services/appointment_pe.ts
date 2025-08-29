@@ -38,13 +38,17 @@ export const handler = async (event: SQSEvent) => {
                 console.log(`Mensaje ignorado - País: ${countryISO}, esperado: PE`);
                 continue;
             }
-            try {
-                await connection.execute(
-                    "INSERT INTO appointments_pe (insured_id, schedule_id, country_iso, created_at) VALUES (?, ?, ?, NOW())",
-                    [insuredId, scheduleId, countryISO]
-                );
-            } catch (err) {
-                continue;
+            if (connection) {
+                try {
+                    await connection.execute(
+                        "INSERT INTO appointments_pe (insured_id, schedule_id, country_iso, created_at) VALUES (?, ?, ?, NOW())",
+                        [insuredId, scheduleId, countryISO]
+                    );
+                } catch (err) {
+                    continue;
+                }
+            } else {
+                console.warn("Sin conexión DB, saltando inserción");
             }
 
             const command = new PutEventsCommand({
